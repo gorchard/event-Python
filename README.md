@@ -6,7 +6,10 @@ This is a first attempt at Python code for handling AER vision data. The code is
 Functions included:
 	
 	TD, EM = read_aer(filename):
-		Reads in the ATIS file specified by 'filename' and returns the TD and EM events
+		Reads in the ATIS file specified by 'filename' and returns the TD and EM events. This only works for ATIS recordings directly from the GUI. If you are working with the N-MNIST or N-CALTECH101 datasets, use  read_dataset(filename) instead
+		
+	TD = read_dataset(filename):
+		Reads in the TD events contained in the N-MNIST/N-CALTECH101 dataset file specified by 'filename'
 	
 	write2jAER(td_events, filename):
 		writes the td events in 'td_events' to a file specified by 'filename' which is compatible with the jAER framework. To view these events in jAER, make sure to select the DAVIS640 sensor.

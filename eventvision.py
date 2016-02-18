@@ -388,6 +388,28 @@ def write2jAER(td_events, filename):
     #aedat_file.write(vector_all)
     #vector_all.tofile(aedat_file)
     aedat_file.close()
+
+def read_dataset(filename):
+    TD = Events()    
+    f = open(filename, 'rb')
+    raw_data = np.fromfile(f, dtype=np.uint8)
+    f.close()
+    raw_data = np.uint32(raw_data)
     
+    TD.x = raw_data[0::5]
+    TD.y = raw_data[1::5]
+    TD.p = (raw_data[2::5]& 128)>>7 #bit 7
+    TD.ts = ((raw_data[2::5]& 127)<<16) | (raw_data[3::5]<<8) | (raw_data[4::5])
+    Type = np.zeros(len(TD.ts), dtype=np.uint8)
+    timeOffset = 0;
+    for i in range(len(TD.ts)):
+        if ((TD.y[i] == 240) and (TD.x[i] ==305)):
+            Type[i] = 2;
+            timeOffset = timeOffset + 2**13;
+        else:
+            TD.ts[i] = TD.ts[i] + timeOffset;
+    valid_indices = Type != 2
+    TD = extract_indices(TD, valid_indices)
+    return TD
 
 print('Event-based vision module imported')
