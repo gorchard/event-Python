@@ -182,13 +182,13 @@ def auto_calibrate(num_squares, squareSize_mm, scale, image_directory, image_for
 #EM.p = np.array(range(10))
     
     
-def extract_indices(events, indices):
+def extract_indices(events, logical_indices):
     eventsOut = Events()
-    if sum(indices)>0:
+    if sum(logical_indices)>0:
         eventsOut = events
         for i in eventsOut.__dict__.keys():
             temp = getattr(eventsOut, i)
-            temp = temp[indices]
+            temp = temp[logical_indices]
             setattr(eventsOut, i, temp)
     return eventsOut
     
