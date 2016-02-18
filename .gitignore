@@ -1,0 +1,5 @@
+# ignore autosave files from Matlab/Python and any date files written
+*.asv
+*.pyc
+*.aedat
+*.val
