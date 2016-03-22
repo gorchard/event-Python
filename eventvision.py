@@ -267,7 +267,11 @@ def show_em(em_events):
     return
 
 
-def show_td(td_events):
+def show_td(td_events, waitDelay = 1):
+    """Display the spikes as an image for waitDelay milliseconds
+    td_events: Events
+    waitDelay: milliseconds
+    """
     max_x = max(td_events.x)+1
     max_y = max(td_events.y)+1
 
@@ -284,7 +288,7 @@ def show_td(td_events):
         img = 255*td_img
         img = img.astype('uint8')
         cv2.imshow('img',img)
-        cv2.waitKey(1)
+        cv2.waitKey(waitDelay)
         frame_end = frame_end+frame_length
         
     cv2.destroyAllWindows()
@@ -332,11 +336,20 @@ def sort_order(events):
     return eventsOut
 
 def extract_roi(td_events, top_left, size):
-    valid_indices = (td_events.x > top_left[0]) & (td_events.y > top_left[1]) & (td_events.x < (size[0]+top_left[0])) & (td_events.y > (top_left[1]+size[1]))
+    """Extract a region of interest from the Events
+    td_events: Events
+    top_left: [x: int, y: int]
+    size: [width, height]
+    """
+    valid_indices = (td_events.x >= top_left[0]) & (td_events.y >= top_left[1]) & (td_events.x < (size[0]+top_left[0])) & (td_events.y < (top_left[1]+size[1]))
     return  extract_indices(td_events, valid_indices.astype('bool'))
 
 
 def implement_refraction(td_events, us_time):
+    """Re-create the biological neuron behaviour where there is a refractory (enforced rest) period before a neuron can spike again
+    td_events: Events
+    us_time: time in microseconds
+    """
     max_x = max(td_events.x)
     max_y = max(td_events.y)
     T0 = np.ones((max_x+1,max_y+1))-us_time-1

@@ -16,7 +16,7 @@ ev.show_td(TD)
 TD2 = ev.extract_roi(TD, [100,100], [50,50])
 
 #implement a refractory period... note this will also edit the event struct 'TD2'
-TD3 = ev.impement_refraction(TD2, 0.03)
+TD3 = ev.implement_refraction(TD2, 0.03)
 
 #perform some noise filtering... note this will also edit the event struct 'TD3'
 TD4 = ev.filter_td(TD3, 0.03)
