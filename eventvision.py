@@ -9,41 +9,38 @@ from win32api import GetSystemMetrics
 
 class Events(object):
     """
-    Temporal Difference events. The arrays are of equal size
-    x: Numpy array of pixel x coordinates
-    y: Numpy array of pixel y coordinates
-    p: Numpy array of polarity values. 1 means off, 2 means on
-    ts: Numpy array of timestamps in microseconds
+    Temporal Difference events. 
+    data: a NumPy Record Array with the following named fields
+        x: pixel x coordinate, unsigned 16bit int
+        y: pixel y coordinate, unsigned 16bit int
+        p: polarity value, boolean. False=off, True=on
+        ts: timestamp in microseconds, unsigned 64bit int
     """
-    def __init__(self):
-        self.x = None
-        self.y = None
-        self.p = None
-        self.ts = None
+    def __init__(self, num_events):
+        """num_spikes: number of events this instance will initially contain"""
+        self.data = np.rec.array(None, dtype=[('x', np.uint16), ('y', np.uint16), ('p', np.bool_), ('ts', np.uint64)], shape=(num_events))
 
     def show_em(self):
-        """
-        Displays the EM events (grayscale ATIS events)
-        """
-        max_x = max(self.x) + 1
-        max_y = max(self.y) + 1
+        """Displays the EM events (grayscale ATIS events)"""
+        max_x = self.data.x.max() + 1
+        max_y = self.data.y.max() + 1
         thr_valid = np.zeros((max_y, max_x))
         thr_l = np.zeros((max_y, max_x))
         thr_h = np.zeros((max_y, max_x))
 
         frame_length = 24e3
-        t_max = len(self.ts) - 1
-        frame_end = self.ts[1] + frame_length
+        t_max = len(self.data) - 1
+        frame_end = self.data[1].ts + frame_length
         i = 0
         while i < t_max:
-            while (self.ts[i] < frame_end) and (i < t_max):
-                if self.p[i] == 0:
-                    thr_valid[self.y[i], self.x[i]] = 1
-                    thr_l[self.y[i], self.x[i]] = self.ts[i]
-                else:
-                    if thr_valid[self.y[i], self.x[i]] == 1:
-                        thr_valid[self.y[i], self.x[i]] = 0
-                        thr_h[self.y[i], self.x[i]] = self.ts[i] - thr_l[self.y[i], self.x[i]]
+            while (self.data[i].ts < frame_end) and (i < t_max):
+                datum = self.data[i]
+                if datum.p == 0:
+                    thr_valid[datum.y, datum.x] = 1
+                    thr_l[datum.y, datum.x] = datum.ts
+                elif thr_valid[datum.y, datum.x] == 1:
+                    thr_valid[datum.y, datum.x] = 0
+                    thr_h[datum.y, datum.x] = datum.ts - thr_l[datum.y, datum.x]
                 i = i + 1
 
             max_val = 1.16e5
@@ -63,21 +60,21 @@ class Events(object):
         return
 
     def show_td(self, wait_delay=1):
-        """
-        Displays the TD events (change detection ATIS or DVS events)
+        """Displays the TD events (change detection ATIS or DVS events)
         waitDelay: milliseconds
         """
-        max_x = max(self.x) + 1
-        max_y = max(self.y) + 1
+        max_x = self.data.x.max() + 1
+        max_y = self.data.y.max() + 1
 
         frame_length = 24e3
-        t_max = len(self.ts) - 1
-        frame_end = self.ts[1] + frame_length
+        t_max = len(self.data) - 1
+        frame_end = self.data[1].ts + frame_length
         i = 0
         while i < t_max:
             td_img = 0.5 * np.ones((max_y, max_x))
-            while (self.ts[i] < frame_end) and (i < t_max):
-                td_img[self.y[i], self.x[i]] = self.p[i]
+            while (self.data[i].ts < frame_end) and (i < t_max):
+                datum = self.data[i]
+                td_img[datum.y, datum.x] = datum.p
                 i = i + 1
 
             img = 255 * td_img
@@ -90,48 +87,57 @@ class Events(object):
         return
 
     def filter_td(self, us_time):
-        """
-        Apply a background activity filter on the events, such that only events which are
+        """Generate a filtered set of event data.
+        Does not modify instance data
+        Uses a background activity filter on the events, such that only events which are
         correlated with a neighbouring event within 'us_time' microseconds will be allowed
         through the filter.
         us_time: microseconds
         """
-        max_x = max(self.x)
-        max_y = max(self.y)
+        max_x = self.data.x.max()
+        max_y = self.data.y.max()
         t0 = np.ones((max_x + 1, max_y + 1)) - us_time - 1
         x_prev = 0
         y_prev = 0
         p_prev = 0
 
-        valid_indices = np.ones(len(self.ts), np.bool)
+        valid_indices = np.ones(len(self.data), np.bool_)
+        i = 0
 
-        for i in range(len(self.ts)):
-            if x_prev != self.x[i] | y_prev != self.y[i] | p_prev != self.p[i]:
-                t0[self.x[i], self.y[i]] = -us_time
-                min_x_sub = max(0, self.x[i] - 1)
-                max_x_sub = min(max_x, self.x[i] + 1)
-                min_y_sub = max(0, self.y[i] - 1)
-                max_y_sub = min(max_y, self.y[i] + 1)
+        for datum in np.nditer(self.data):
+            datum_ts = datum['ts'].item(0)
+            datum_x = datum['x'].item(0)
+            datum_y = datum['y'].item(0)
+            datum_p = datum['p'].item(0)
+            if x_prev != datum_x | y_prev != datum_y | p_prev != datum_p:
+                t0[datum_x, datum_y] = -us_time
+                min_x_sub = max(0, datum_x - 1)
+                max_x_sub = min(max_x, datum_x + 1)
+                min_y_sub = max(0, datum_y - 1)
+                max_y_sub = min(max_y, datum_y + 1)
 
                 t0_temp = t0[min_x_sub:(max_x_sub + 1), min_y_sub:(max_y_sub + 1)]
 
-                if min(self.ts[i] - t0_temp.reshape(-1, 1)) > us_time:
-                    valid_indices[i] = 0
+                if min(datum_ts - t0_temp.reshape(-1, 1)) > us_time:
+                       valid_indices[i] = 0
 
-            t0[self.x[i], self.y[i]] = self.ts[i]
-            x_prev = self.x[i]
-            y_prev = self.y[i]
-            p_prev = self.p[i]
+            t0[datum_x, datum_y] = datum_ts
+            x_prev = datum_x
+            y_prev = datum_y
+            p_prev = datum_p
+            i = i + 1
 
-        return extract_indices(self, valid_indices.astype('bool'))
+        return self.data[valid_indices.astype('bool')]
 
     def sort_order(self):
-        """
+        """Generate data sorted by ascending ts
+        Does not modify instance data
         Will look through the struct events, and sort all events by the field 'ts'.
         In other words, it will ensure events_out.ts is monotonically increasing,
         which is useful when combining events from multiple recordings.
         """
-        print 'the function sort_order has not yet been thoroughly tested'
+        #chose mergesort because it is a stable sort, at the expense of more memory usage
+        self.data = np.sort(self.data, order='ts', kind='mergesort')
         inds = self.ts.argsort()
         events_out = self
         for i in events_out.__dict__.keys():
@@ -141,40 +147,56 @@ class Events(object):
         return events_out
 
     def extract_roi(self, top_left, size, is_normalize=False):
-        """
-        Extracts td_events which fall into a rectangular region of interest with
+        """Extract Region of Interest
+        Does not modify instance data
+        Generates a set of td_events which fall into a rectangular region of interest with
         top left corner at 'top_left' and size 'size'
         top_left: [x: int, y: int]
         size: [width, height]
-        is_normalize: bool. If true, x and y values will be normalized to the cropped region
+        is_normalize: bool. If True, x and y values will be normalized to the cropped region
         """
-        #TODO(cedricseah): implement normalization
-        valid_indices = (self.x >= top_left[0]) \
-        & (self.y >= top_left[1]) \
-        & (self.x < (size[0] + top_left[0])) \
-        & (self.y < (top_left[1] + size[1]))
-        return extract_indices(self, valid_indices.astype('bool'))
+        min_x = top_left[0]
+        min_y = top_left[1]
+        max_x = size[0] + min_x
+        max_y = size[1] + min_y
+        extracted_data = self.data[(self.data.x >= min_x)]
+        extracted_data = extracted_data[extracted_data.y >= min_y]
+        extracted_data = extracted_data[extracted_data.x < max_x]
+        extracted_data = extracted_data[extracted_data.y < max_y]
+
+        if is_normalize:
+            extracted_data.x = extracted_data.x - min_x
+            extracted_data.y = extracted_data.y - min_y
+
+        return extracted_data
 
     def apply_refraction(self, us_time):
-        """
-        Apply refraction ala the biological neuron behaviour of a refractory (enforced rest)
-        period before a neuron is able to spike
+        """Implements a refractory period for each pixel.
+        Does not modify instance data
+        In other words, if an event occurs within 'us_time' microseconds of
+        a previous event at the same pixel, then the second event is removed
         us_time: time in microseconds
         """
-        max_x = max(self.x)
-        max_y = max(self.y)
+        max_x = self.data.x.max()
+        max_y = self.data.y.max()
         t0 = np.ones((max_x + 1, max_y + 1)) - us_time - 1
 
-        valid_indices = np.ones(len(self.ts), np.bool)
+        valid_indices = np.ones(len(self.data), np.bool_)
+        i = 0
 
-        for i in range(len(self.ts)):
-            if (self.ts[i] - t0[self.x[i], self.y[i]]) < us_time:
+        for datum in np.nditer(self.data):
+            datum_ts = datum['ts'].item(0)
+            datum_x = datum['x'].item(0)
+            datum_y = datum['y'].item(0)
+            if datum_ts - t0[datum_x, datum_y] < us_time:
                 valid_indices[i] = 0
             else:
                 valid_indices[i] = 1
-                t0[self.x[i], self.y[i]] = self.ts[i]
+                t0[datum_x, datum_y] = datum_ts
 
-        return extract_indices(self, valid_indices.astype('bool'))
+            i = i + 1
+
+        return self.data[valid_indices.astype('bool')]
 
     def write_j_aer(self, filename):
         """
@@ -183,15 +205,15 @@ class Events(object):
         To view these events in jAER, make sure to select the DAVIS640 sensor.
         """
         import time
-        y = 479 - self.y
+        y = 479 - self.data.y
         #y = td_events.y
         y_shift = 22 + 32
 
-        x = 639 - self.x
+        x = 639 - self.data.x
         #x = td_events.x
         x_shift = 12 + 32
 
-        p = self.p
+        p = self.data.p + 1
         p_shift = 11 + 32
 
         ts_shift = 0
@@ -199,7 +221,7 @@ class Events(object):
         y_final = y.astype(dtype=np.uint64) << y_shift
         x_final = x.astype(dtype=np.uint64) << x_shift
         p_final = p.astype(dtype=np.uint64) << p_shift
-        ts_final = self.ts.astype(dtype=np.uint64) << ts_shift
+        ts_final = self.data.ts.astype(dtype=np.uint64) << ts_shift
         vector_all = np.array(y_final + x_final + p_final + ts_final, dtype=np.uint64)
         aedat_file = open(filename, 'wb')
 
@@ -278,8 +300,6 @@ def present_checkerboard(num_squares):
             #yloc =
             #range(image_borderSize+((y-1)*squareSize_pixels),(y*squareSize_pixels+image_borderSize))
             #img[[xloc],[yloc]] = 0
-
-
 
     # display
     cv2.imshow('image', img)
@@ -398,111 +418,116 @@ def auto_calibrate(num_squares, square_size_mm, scale, image_directory, image_fo
 
     return ret, mtx, dist, rvecs, tvecs
 
-def extract_indices(events, logical_indices):
-    """
-    Take in the event structure 'events' and remove any events corresponding to locations where logical_indices = 0
-    """
-    events_out = Events()
-    if sum(logical_indices) > 0:
-        events_out = events
-        for i in events_out.__dict__.keys():
-            temp = getattr(events_out, i)
-            temp = temp[logical_indices]
-            setattr(events_out, i, temp)
-    return events_out
-
 def read_aer(filename):
-    """
-    Reads in the ATIS file specified by 'filename' and returns the TD and EM events.
+    """Reads in the ATIS file specified by 'filename' and returns the TD and EM events.
     This only works for ATIS recordings directly from the GUI.
     If you are working with the N-MNIST or N-CALTECH101 datasets, use read_dataset(filename) instead
     """
-    td = Events()
-    em = Events()
-    all_events = Events()
     f = open(filename, 'rb')
     #raw_data = np.fromfile(f, dtype=np.uint8, count=-1)
     raw_data = np.fromfile(f, dtype=np.uint8)
     f.close()
     raw_data = np.uint16(raw_data)
 
-    all_events.y = raw_data[3::4]
-    all_events.x = ((raw_data[1::4] & 32) << 3) | raw_data[2::4] #bit 5
-    all_events.p = (raw_data[1::4] & 128) >> 7 #bit 7
-    all_events.ts = raw_data[0::4] | ((raw_data[1::4] & 31) << 8) # bit 4 downto 0
-    dtype = (raw_data[1::4] & 64) >> 6 #bit 6
-    all_events.ts = all_events.ts.astype('uint')
-
+    all_y = raw_data[3::4]
+    all_x = ((raw_data[1::4] & 32) << 3) | raw_data[2::4] #bit 5
+    all_p = (raw_data[1::4] & 128) >> 7 #bit 7
+    all_ts = raw_data[0::4] | ((raw_data[1::4] & 31) << 8) # bit 4 downto 0
+    all_event_type = (raw_data[1::4] & 64) >> 6 #bit 6
+    all_ts = all_ts.astype('uint')
+    td_event_indices = np.zeros(len(all_y), dtype=np.bool_)
+    em_event_indices = np.copy(td_event_indices)
+    0.
+    # Iterate through the events, looking out for time stamp overflow events
+    # And update the td and em event indices at the same time
     time_offset = 0
-    for i in range(len(all_events.ts)):
-        if (all_events.y[i] == 240) and (all_events.x[i] == 305):
-            dtype[i] = 2
+    for i in range(len(all_ts)):
+        if (all_y[i] == 240) and (all_x[i] == 305):
+            #timestamp overflow, increment the time offset
             time_offset = time_offset + 2 ** 13
         else:
-            all_events.ts[i] = all_events.ts[i] + time_offset
+            #apply time offset
+            all_ts[i] = all_ts[i] + time_offset
+            
+            #update the td and em event indices
+            if all_event_type[i] == 1:
+                em_event_indices[i] = True
+            else:
+                td_event_indices[i] = True
 
-    valid_indices = dtype != 2
-    all_events = extract_indices(all_events, valid_indices)
-    dtype = dtype[valid_indices]
+    em = Events(em_event_indices.sum())
+    em.data.x = all_x[em_event_indices]
+    em.data.y = all_y[em_event_indices]
+    em.data.ts = all_ts[em_event_indices]
+    em.data.p = all_p[em_event_indices]
 
-    valid_indices = dtype == 1
-    em = extract_indices(all_events, valid_indices)
-    valid_indices = dtype == 0
-    td = extract_indices(all_events, valid_indices)
+    td = Events(td_event_indices.sum())
+    td.data.x = all_x[td_event_indices]
+    td.data.y = all_y[td_event_indices]
+    td.data.ts = all_ts[td_event_indices]
+    td.data.p = all_p[td_event_indices]
 
     return td, em
 
 def read_dataset(filename):
-    """
-    Reads in the TD events contained in the N-MNIST/N-CALTECH101 dataset file specified by 'filename'
-    """
-    td = Events()
+    """Reads in the TD events contained in the N-MNIST/N-CALTECH101 dataset file specified by 'filename'"""
     f = open(filename, 'rb')
     raw_data = np.fromfile(f, dtype=np.uint8)
     f.close()
     raw_data = np.uint32(raw_data)
 
-    td.x = raw_data[0::5]
-    td.y = raw_data[1::5]
-    td.p = (raw_data[2::5] & 128) >> 7 #bit 7
-    td.ts = ((raw_data[2::5] & 127) << 16) | (raw_data[3::5] << 8) | (raw_data[4::5])
-    dtype = np.zeros(len(td.ts), dtype=np.uint8)
+    all_y = raw_data[1::5]
+    all_x = raw_data[0::5]
+    all_p = (raw_data[2::5] & 128) >> 7 #bit 7
+    all_ts = ((raw_data[2::5] & 127) << 16) | (raw_data[3::5] << 8) | (raw_data[4::5])
+    td_indices = np.zeros(len(all_ts), dtype=np.bool_)
+
+    #Iterate through the events, looking out for time stamp overflow events
+    #And update td indices at the same time (by excluding time stamp events)
     time_offset = 0
-    for i in range(len(td.ts)):
-        if (td.y[i] == 240) and (td.x[i] == 305):
-            dtype[i] = 2
+    for i in range(len(all_ts)):
+        if (all_y[i] == 240) and (all_x[i] == 305):
+            #timestamp overflow, increment the time offset
             time_offset = time_offset + 2 ** 13
         else:
-            td.ts[i] = td.ts[i] + time_offset
-    valid_indices = dtype != 2
-    td = extract_indices(td, valid_indices)
+            #apply time offset
+            all_ts[i] = all_ts[i] + time_offset
+            td_indices[i] = True
+
+    td = Events(td_indices.sum())
+    td.data.x = all_x[td_indices]
+    td.data.y = all_y[td_indices]
+    td.data.ts = all_ts[td_indices]
+    td.data.p = all_p[td_indices]
     return td
 
 def main():
     """Example usage of eventvision"""
     #read in some data
-    td, em = ev.read_aer('0000.val')
+    #td, em = read_aer('0000.val')
+    td = read_dataset('trainReduced/0/00002.bin')
 
     #show the TD events
     td.show_td(100)
 
     #extract a region of interest...
     #note this will also edit the event struct 'TD'
-    td2 = td.extract_roi([100, 100], [50, 50])
+    #td.data = ev.extract_roi(TD, [50,50], [150,150])
+    td.data = td.extract_roi([3, 3], [20, 20])
 
     #implement a refractory period...
     #note this will also edit the event #struct 'TD2'
-    td3 = td2.apply_refraction(0.03)
+    td.data = td.apply_refraction(0.03)
 
     #perform some noise filtering...
     #note this will also edit the event struct 'TD3'
-    td4 = td3.filter_td(0.03)
+    td.data = td.filter_td(0.03)
 
     #show the resulting data
-    td4.show_td(100)
+    td.show_td(100)
 
     #write the filtered data in a format jAER can understand
-    td4.write_j_aer('jAERdata.aedat')
+    td.write_j_aer('jAERdata.aedat')
 
 
     #show the grayscale data
