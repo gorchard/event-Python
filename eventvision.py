@@ -495,25 +495,6 @@ def read_aer(filename):
     #td.data.y = all_y[td_event_indices]
     #td.data.ts = all_ts[td_event_indices]
     #td.data.p = all_p[td_event_indices]
-    
-    def compute_thr_l(subset_events, all_events):
-        subset_events.thr_l = subset_events.ts
-        return subset_events
-
-    def fill_zeros_with_last(arr):
-        """Fill all 0 values with the last non-zero value in a 1d numpy array"""
-        #http://stackoverflow.com/a/30489294
-        prev = np.arange(len(arr))
-        prev[arr == 0] = 0
-        prev = np.maximum.accumulate(prev)
-        return arr[prev]
-
-    def retrieve_thr_l(subset_events, all_events):
-        for event in subset_events:
-            relevant_events = all_events[(all_events.x == event.x) & (all_events.y == event.y) & (all_events.p == 0) & (all_events.ts < event.ts)]
-            if relevant_events.size > 0:
-                event.thr_l = relevant_events[-1].ts
-        return subset_events
 
     em2 = Events(em_event_indices2.size)
     em2.data.x = all_x[em_event_indices2]
