@@ -38,8 +38,9 @@ class Events(object):
         thr.valid.fill(False)
         thr.low.fill(frame_start)
         thr.high.fill(0)
-        
+
         def show_em_frame(frame_data):
+            """Prepare and show a single frame of em data to be shown"""
             for datum in np.nditer(frame_data):
                 ts_val = datum['ts'].item(0)
                 thr_data = thr[datum['y'].item(0), datum['x'].item(0)]
@@ -85,16 +86,18 @@ class Events(object):
         td_img = np.ones((max_y, max_x), dtype=np.uint8)
         while frame_start < t_max:
             frame_data = self.data[(self.data.ts >= frame_start) & (self.data.ts < frame_end)]
-            td_img.fill(128)
+            
+            if frame_data.size > 0:
+                td_img.fill(128)
 
-            #with timer.Timer() as em_playback_timer:
-            for datum in np.nditer(frame_data):
-                td_img[datum['y'].item(0), datum['x'].item(0)] = datum['p'].item(0)
-            #print 'prepare td frame by iterating events took %s seconds' %em_playback_timer.secs
+                #with timer.Timer() as em_playback_timer:
+                for datum in np.nditer(frame_data):
+                    td_img[datum['y'].item(0), datum['x'].item(0)] = datum['p'].item(0)
+                #print 'prepare td frame by iterating events took %s seconds' %em_playback_timer.secs
 
-            td_img = np.piecewise(td_img, [td_img == 0, td_img == 1, td_img == 128], [0, 255, 128])
-            cv2.imshow('img', td_img)
-            cv2.waitKey(wait_delay)
+                td_img = np.piecewise(td_img, [td_img == 0, td_img == 1, td_img == 128], [0, 255, 128])
+                cv2.imshow('img', td_img)
+                cv2.waitKey(wait_delay)
 
             frame_start = frame_end + 1
             frame_end = frame_end + frame_length + 1
@@ -120,8 +123,7 @@ class Events(object):
         valid_indices = np.ones(len(self.data), np.bool_)
         i = 0
 
-        #TODO speed up filtering
-        with timer.Timer() as em_playback_timer:
+        with timer.Timer() as ref_timer:
             for datum in np.nditer(self.data):
                 datum_ts = datum['ts'].item(0)
                 datum_x = datum['x'].item(0)
@@ -144,7 +146,7 @@ class Events(object):
                 y_prev = datum_y
                 p_prev = datum_p
                 i = i + 1
-        print 'filtering took %s seconds' %em_playback_timer.secs
+        print 'filtering took %s seconds' % ref_timer.secs
         return self.data[valid_indices.astype('bool')]
 
     def sort_order(self):
@@ -154,7 +156,8 @@ class Events(object):
         In other words, it will ensure events_out.ts is monotonically increasing,
         which is useful when combining events from multiple recordings.
         """
-        #chose mergesort because it is a stable sort, at the expense of more memory usage
+        #chose mergesort because it is a stable sort, at the expense of more
+        #memory usage
         events_out = np.sort(self.data, order='ts', kind='mergesort')
         return events_out
 
@@ -174,6 +177,8 @@ class Events(object):
         extracted_data = self.data[(self.data.x >= min_x) & (self.data.x < max_x) & (self.data.y >= min_y) & (self.data.y < max_y)]
 
         if is_normalize:
+            extracted_data = np.copy(extracted_data)
+            extracted_data = extracted_data.view(np.recarray)
             extracted_data.x -= min_x
             extracted_data.y -= min_y
 
@@ -189,11 +194,10 @@ class Events(object):
         max_x = self.data.x.max()
         max_y = self.data.y.max()
         t0 = np.ones((max_x + 1, max_y + 1)) - us_time - 1
-
         valid_indices = np.ones(len(self.data), np.bool_)
-        i = 0
 
-        #TODO speed up refraction
+        #with timer.Timer() as ref_timer:
+        i = 0
         for datum in np.nditer(self.data):
             datum_ts = datum['ts'].item(0)
             datum_x = datum['x'].item(0)
@@ -201,10 +205,10 @@ class Events(object):
             if datum_ts - t0[datum_x, datum_y] < us_time:
                 valid_indices[i] = 0
             else:
-                valid_indices[i] = 1
                 t0[datum_x, datum_y] = datum_ts
 
-            i = i + 1
+            i += 1
+        #print 'Refraction took %s seconds' % ref_timer.secs
 
         return self.data[valid_indices.astype('bool')]
 
@@ -445,7 +449,8 @@ def read_aer(filename):
         all_y = raw_data[3::4]
         all_x = ((raw_data[1::4] & 32) << 3) | raw_data[2::4] #bit 5
         all_p = (raw_data[1::4] & 128) >> 7 #bit 7
-        #all_ts = raw_data[0::4] | ((raw_data[1::4] & 31) << 8) # bit 4 downto 0
+        #all_ts = raw_data[0::4] | ((raw_data[1::4] & 31) << 8) # bit 4 downto
+                                                   #0
         all_ts2 = raw_data[0::4] | ((raw_data[1::4] & 31) << 8) # bit 4 downto 0
         #all_event_type = (raw_data[1::4] & 64) >> 6 #bit 6
         all_event_type2 = (raw_data[1::4] & 64) >> 6 #bit 6
@@ -561,17 +566,17 @@ def read_bin_linux(filename):
             p: polarity value, boolean. False = off event, True = on event
             ts: timestamp in microseconds, unsigned 64bit int
     """
-    
+
     with open(filename, 'rb') as f:
-    
+
         # Strip header
 
         header_line = f.readline()
-   
-        while(header_line[0] == '#'):
+
+        while header_line[0] == '#':
             header_line = f.readline()
 
-        raw_data = np.fromfile(f, dtype = np.uint8)
+        raw_data = np.fromfile(f, dtype=np.uint8)
 
     # file already closed since using 'with' statement
 
@@ -581,42 +586,34 @@ def read_bin_linux(filename):
     full_y = np.zeros(total_events)
     full_p = np.zeros(total_events)
     full_ts = np.zeros(total_events)
-    full_f = np.zeros(total_events)    
-    
+    full_f = np.zeros(total_events)
+
     TD_indices = np.zeros(total_events, dtype=np.bool_)
 
     total_events = 0
     buffer_location = 0
     start_evt_ind = 0
 
-    while(buffer_location < len(raw_data)):
-    
-        num_events = ((raw_data[buffer_location+3].astype(np.uint32)<<24)
-                        + (raw_data[buffer_location+2].astype(np.uint32)<<16)
-                        + (raw_data[buffer_location+1].astype(np.uint32)<<8)
-                        + raw_data[buffer_location])
+    while buffer_location < len(raw_data):
+
+        num_events = ((raw_data[buffer_location + 3].astype(np.uint32) << 24) + (raw_data[buffer_location + 2].astype(np.uint32) << 16) + (raw_data[buffer_location + 1].astype(np.uint32) << 8) + raw_data[buffer_location])
 
         buffer_location = buffer_location + 4
-    
-        start_time = ((raw_data[buffer_location+3].astype(np.uint32)<<24)
-                        + (raw_data[buffer_location+2].astype(np.uint32)<<16)
-                        + (raw_data[buffer_location+1].astype(np.uint32)<<8)
-                        + raw_data[buffer_location])
+
+        start_time = ((raw_data[buffer_location + 3].astype(np.uint32) << 24) + (raw_data[buffer_location + 2].astype(np.uint32) << 16) + (raw_data[buffer_location + 1].astype(np.uint32) << 8) + raw_data[buffer_location])
 
         buffer_location = buffer_location + 8
 
-        # Note renaming (since original is a Python built-in): 
-	# type = evt_type and subtype = evt_subtype 
+        # Note renaming (since original is a Python built-in):
+	# type = evt_type and subtype = evt_subtype
 
-        evt_type = raw_data[buffer_location:(buffer_location+8*num_events):8]
-        evt_subtype = raw_data[(buffer_location + 1):(buffer_location + 8*num_events +1 ):8]
-        y = raw_data[(buffer_location + 2):(buffer_location + 8*num_events + 2):8]
-        x = ((raw_data[(buffer_location + 5):(buffer_location + 8*num_events + 5):8].astype(np.uint16)<<8)
-             + (raw_data[(buffer_location + 4):(buffer_location + 8*num_events + 4):8]))
-        ts = ((raw_data[(buffer_location + 7):(buffer_location + 8*num_events + 7):8].astype(np.uint32)<<8)
-              + (raw_data[(buffer_location + 6):(buffer_location + 8*num_events + 6):8]))
+        evt_type = raw_data[buffer_location:(buffer_location + 8 * num_events):8]
+        evt_subtype = raw_data[(buffer_location + 1):(buffer_location + 8 * num_events + 1):8]
+        y = raw_data[(buffer_location + 2):(buffer_location + 8 * num_events + 2):8]
+        x = ((raw_data[(buffer_location + 5):(buffer_location + 8 * num_events + 5):8].astype(np.uint16) << 8) + (raw_data[(buffer_location + 4):(buffer_location + 8 * num_events + 4):8]))
+        ts = ((raw_data[(buffer_location + 7):(buffer_location + 8 * num_events + 7):8].astype(np.uint32) << 8) + (raw_data[(buffer_location + 6):(buffer_location + 8 * num_events + 6):8]))
 
-        buffer_location = buffer_location + num_events*8;
+        buffer_location = buffer_location + num_events * 8
 
         ts = ts + start_time
 
@@ -642,7 +639,7 @@ def read_bin_linux(filename):
     # If intefacing with Matlab, 1 must be added to x and y indices.
     # due to Matlab's index convention.
 
-    TD.data.x = full_x[TD_indices]  # + 1       
+    TD.data.x = full_x[TD_indices]  # + 1
     TD.data.y = full_y[TD_indices]  # + 1
     TD.data.ts = full_ts[TD_indices]
     TD.data.p = full_p[TD_indices]
@@ -657,14 +654,14 @@ def main():
     #td = read_dataset('trainReduced/0/00002.bin')
 
     #show the TD events
-    #td.show_td()
+    td.show_td()
 
     #extract a region of interest...
-    #td.data = td.extract_roi([50,50], [150,150], True)
+    td.data = td.extract_roi([75, 75], [50, 50], True)
     #td.data = td.extract_roi([3, 3], [28, 28])
 
     #implement a refractory period...
-    #td.data = td.apply_refraction(0.03)
+    td.data = td.apply_refraction(0.03)
 
     #perform some noise filtering...
     td.data = td.filter_td(0.03)
