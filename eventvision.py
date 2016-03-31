@@ -17,15 +17,14 @@ class Events(object):
         p: polarity value, boolean. False=off, True=on
         ts: timestamp in microseconds, unsigned 64bit int
     """
-    def __init__(self, num_events):
+    def __init__(self, num_events, width=305, height=240):
         """num_spikes: number of events this instance will initially contain"""
         self.data = np.rec.array(None, dtype=[('x', np.uint16), ('y', np.uint16), ('p', np.bool_), ('ts', np.uint64)], shape=(num_events))
+        self.width = width
+        self.height = height
 
     def show_em(self):
         """Displays the EM events (grayscale ATIS events)"""
-        max_x = self.data.x.max() + 1
-        max_y = self.data.y.max() + 1
-
         frame_length = 24e3
         t_max = self.data.ts[-1]
         frame_start = self.data[0].ts
@@ -34,7 +33,7 @@ class Events(object):
         min_val = 1.74e3
         val_range = max_val - min_val
 
-        thr = np.rec.array(None, dtype=[('valid', np.bool_), ('low', np.uint64), ('high', np.uint64)], shape=(max_y, max_x))
+        thr = np.rec.array(None, dtype=[('valid', np.bool_), ('low', np.uint64), ('high', np.uint64)], shape=(self.height, self.width))
         thr.valid.fill(False)
         thr.low.fill(frame_start)
         thr.high.fill(0)
@@ -75,15 +74,11 @@ class Events(object):
         """Displays the TD events (change detection ATIS or DVS events)
         waitDelay: milliseconds
         """
-        max_x = self.data.x.max() + 1
-        max_y = self.data.y.max() + 1
-
         frame_length = 24e3
-        #t_max = len(self.data) - 1
         t_max = self.data.ts[-1]
         frame_start = self.data[0].ts
         frame_end = self.data[0].ts + frame_length
-        td_img = np.ones((max_y, max_x), dtype=np.uint8)
+        td_img = np.ones((self.height, self.width), dtype=np.uint8)
         while frame_start < t_max:
             frame_data = self.data[(self.data.ts >= frame_start) & (self.data.ts < frame_end)]
             
@@ -93,7 +88,8 @@ class Events(object):
                 #with timer.Timer() as em_playback_timer:
                 for datum in np.nditer(frame_data):
                     td_img[datum['y'].item(0), datum['x'].item(0)] = datum['p'].item(0)
-                #print 'prepare td frame by iterating events took %s seconds' %em_playback_timer.secs
+                #print 'prepare td frame by iterating events took %s seconds'
+                #%em_playback_timer.secs
 
                 td_img = np.piecewise(td_img, [td_img == 0, td_img == 1, td_img == 128], [0, 255, 128])
                 cv2.imshow('img', td_img)
@@ -113,9 +109,9 @@ class Events(object):
         through the filter.
         us_time: microseconds
         """
-        max_x = self.data.x.max()
-        max_y = self.data.y.max()
-        t0 = np.ones((max_x + 1, max_y + 1)) - us_time - 1
+        max_x = self.width - 1
+        max_y = self.height - 1
+        t0 = np.ones((self.width, self.height)) - us_time - 1
         x_prev = 0
         y_prev = 0
         p_prev = 0
@@ -177,6 +173,8 @@ class Events(object):
         extracted_data = self.data[(self.data.x >= min_x) & (self.data.x < max_x) & (self.data.y >= min_y) & (self.data.y < max_y)]
 
         if is_normalize:
+            self.width = size[0]
+            self.height = size[1]
             extracted_data = np.copy(extracted_data)
             extracted_data = extracted_data.view(np.recarray)
             extracted_data.x -= min_x
@@ -191,9 +189,7 @@ class Events(object):
         a previous event at the same pixel, then the second event is removed
         us_time: time in microseconds
         """
-        max_x = self.data.x.max()
-        max_y = self.data.y.max()
-        t0 = np.ones((max_x + 1, max_y + 1)) - us_time - 1
+        t0 = np.ones((self.width, self.height)) - us_time - 1
         valid_indices = np.ones(len(self.data), np.bool_)
 
         #with timer.Timer() as ref_timer:
@@ -547,9 +543,11 @@ def read_dataset(filename):
     #Everything else is a proper td spike
     td_indices = np.where(all_y != 240)[0]
 
-    td = Events(td_indices.size)
+    td = Events(td_indices.size, 34, 34)
     td.data.x = all_x[td_indices]
+    td.width = td.data.x.max() + 1
     td.data.y = all_y[td_indices]
+    td.height = td.data.y.max() + 1
     td.data.ts = all_ts[td_indices]
     td.data.p = all_p[td_indices]
     return td

@@ -42,6 +42,7 @@ class CaffeLmdb(object):
         #if hasattr(self, '_write_txn'):
         if self._write_txn is not None:
             self._write_txn.commit()
+            self._write_txn = None
         else:
             print "No transaction present"
 
@@ -109,7 +110,7 @@ def main():
     """Example of saving and reading grayscale image data (datum) to a caffe lmdb"""
     num_images = 1000
 
-    # Let's pretend this is grayscale MNist images
+    # Let's pretend these are grayscale MNist images
     images = np.zeros((num_images, 1, 28, 28), dtype=np.uint8) # 1 channel, 8 bits
     labels = np.empty(num_images, dtype=np.uint8) # random labels
     labels = labels.astype(int) % 10 # labels will be between 0-9
