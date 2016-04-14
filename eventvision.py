@@ -16,7 +16,7 @@ class Events(object):
         y: pixel y coordinate, unsigned 16bit int
         p: polarity value, boolean. False=off, True=on
         ts: timestamp in microseconds, unsigned 64bit int
-	width: The width of the frame. Default = 305.
+    width: The width of the frame. Default = 305.
     height: The height of the frame. Default = 240.
     """
     def __init__(self, num_events, width=305, height=240):
@@ -571,6 +571,7 @@ def read_bin_linux(filename):
     with open(filename, 'rb') as f:
         # Strip header
         header_line = f.readline()
+        
         while header_line[0] == '#':
             header_line = f.readline()
 
@@ -626,8 +627,8 @@ def read_bin_linux(filename):
     TD.data.ts = full_ts[TD_indices]
     TD.data.p = full_p[TD_indices]
 
-	# Set default width and height:
-    TD.width = 304
+    # Set default width and height:
+    TD.width = 305
     TD.height = 240
     return TD
 
