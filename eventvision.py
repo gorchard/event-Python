@@ -626,10 +626,7 @@ def read_bin_linux(filename):
     TD.data.y = full_y[TD_indices]  # + 1
     TD.data.ts = full_ts[TD_indices]
     TD.data.p = full_p[TD_indices]
-
-    # Set default width and height:
-    TD.width = 305
-    TD.height = 240
+    
     return TD
 
 
