@@ -429,7 +429,7 @@ def main():
     """
 
     input_folder = 'C:\Input_Recordings'
-    output_folder = 'C:\Annotated_Recordings'
+    output_folder = 'C:\Output_Tracks'
     state_file_name = 'annotation_state.pkl'
 
     while(not os.path.isdir(input_folder)):
@@ -506,7 +506,8 @@ def main():
 
             if((check_tracks == 'a') | (check_tracks == 'A')):
                 add_track(annotation_state.output_subfolders[incomplete_file_ind], num_track_files, TD, annotated_by, annotation_state.source_files[incomplete_file_ind])
-
+                num_track_files += 1
+                
             if((check_tracks == 'c') | (check_tracks == 'C')):
                 annotation_state.is_complete[incomplete_file_ind] = True
                 annotation_state.save_state(os.path.join(output_folder, state_file_name)) # Flag current file as completely annotated.
