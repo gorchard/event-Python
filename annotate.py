@@ -25,7 +25,7 @@ class Track(object):
         annotated_by: The name of the user who annotated this particular track.
     """
     
-    def __init__(self, num_events, width = 305, height = 240, annotated_by = '', source_file = '', track_type = 0 ):
+    def __init__(self, num_events, width = 304, height = 240, annotated_by = '', source_file = '', track_type = 0 ):
 
         self.data = np.rec.array(None, dtype=[('x', np.uint16), ('y', np.uint16), ('ts', np.uint64)], shape=(num_events))
         self.width = width
