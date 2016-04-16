@@ -16,10 +16,10 @@ class Events(object):
         y: pixel y coordinate, unsigned 16bit int
         p: polarity value, boolean. False=off, True=on
         ts: timestamp in microseconds, unsigned 64bit int
-    width: The width of the frame. Default = 305.
+    width: The width of the frame. Default = 304.
     height: The height of the frame. Default = 240.
     """
-    def __init__(self, num_events, width=305, height=240):
+    def __init__(self, num_events, width=304, height=240):
         """num_spikes: number of events this instance will initially contain"""
         self.data = np.rec.array(None, dtype=[('x', np.uint16), ('y', np.uint16), ('p', np.bool_), ('ts', np.uint64)], shape=(num_events))
         self.width = width
@@ -522,6 +522,11 @@ def read_aer(filename):
     #print np.array_equal(em, em2)
     #print np.array_equal(td, td2)
 
+    # It appears that the polarity needs to be flipped (when results are compared with Matlab output).
+    # Change the polarity: 0 events become 1 events and vice versa.
+
+    td2.data.p = np.abs(td2.data.p - 1)
+
     return td2, em2
 
 def read_dataset(filename):
@@ -626,6 +631,11 @@ def read_bin_linux(filename):
     TD.data.y = full_y[TD_indices]  # + 1
     TD.data.ts = full_ts[TD_indices]
     TD.data.p = full_p[TD_indices]
+
+    # It appears that the polarity needs to be flipped (when results are compared with Matlab output).
+    # Change the polarity: 0 events become 1 events and vice versa.
+
+    TD.data.p = np.abs(TD.data.p - 1)
     
     return TD
 
