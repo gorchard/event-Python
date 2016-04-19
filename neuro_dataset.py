@@ -129,23 +129,26 @@ def add_images_to_dataset(image_dataset, images, add_index, label, width, height
 
         idx += 1
 
-def save_to_lmdb(image_dataset, output_lmdb, lmdb_size):
+def save_to_lmdb(image_dataset, output_lmdb):
     """Save contents of image dataset to an lmdb
     image_dataset: images in a numpy record array
     output_lmdb: path to output lmdb
-    lmdb_size: maximum size of lmdb
+
+    returns caffe_lmdb instance
     """
     # shuffle the images before storing in the lmdb
     # np.random.shuffle(image_dataset) # does not work
+    lmdb_size = image_dataset.nbytes * image_dataset.size
     shuffled_indices = range(image_dataset.size)
     np.random.shuffle(shuffled_indices)
 
     image_database = caffe_lmdb.CaffeLmdb(output_lmdb, lmdb_size)
     image_database.start_write_transaction()
     count = 0
-
+    key = 0
     for i in shuffled_indices:
         count += 1
+        key += 1
         image = image_dataset[i]
         datum = datum_pb2.Datum()
         datum.channels = 1 #always one for neuromorphic images
@@ -153,7 +156,7 @@ def save_to_lmdb(image_dataset, output_lmdb, lmdb_size):
         datum.width = image['width'].item(0)
         datum.data = image['image_data'].tobytes()  # or .tostring() if numpy < 1.9
         datum.label = image['label'].item(0)
-        str_id = '{:08}'.format(i)
+        str_id = '{:08}'.format(key)
 
         image_database.write_datum(str_id, datum)
 
@@ -163,6 +166,7 @@ def save_to_lmdb(image_dataset, output_lmdb, lmdb_size):
             image_database.start_write_transaction()
 
     image_database.commit_write_transaction()
+    return image_database
 
 def generate_nmnist_dataset(initial_size, input_dir, num_spikes, step_factor):
     """Parse the specified directory containing nmnist files to generate an image dataset
@@ -179,7 +183,7 @@ def generate_nmnist_dataset(initial_size, input_dir, num_spikes, step_factor):
     num_images = 0
 
     # loop through each folder within the test directories
-    for i in range(0, 9):
+    for i in range(0, 10):
         current_dir = input_dir + os.path.sep + str(i) + os.path.sep + '*.bin'
         print 'Processing %s...' %current_dir
         for filename in glob.iglob(current_dir):
@@ -191,25 +195,36 @@ def generate_nmnist_dataset(initial_size, input_dir, num_spikes, step_factor):
 
     return image_dataset[0:num_images]
 
+def show_lmdb_datum(key, datum):
+    flat_image = np.fromstring(datum.data, dtype=np.uint8)
+    if (datum.channels == 1):
+        image = flat_image.reshape(datum.height, datum.width)
+    else:
+        image = flat_image.reshape(datum.channels, datum.height, datum.width)
+    label = datum.label
+    print label
+    cv2.imshow('img', image)
+    cv2.waitKey(1)
+
 def main():
     """Prepare lots of neuromorphic MNIST datasets for use in caffe
     Each dataset will be generated with different number of unique spikes
     """
     initial_size = 1e6 #best to make this big enough avoid expensive re-allocation
-    test_dir = os.path.abspath('testReduced')
-    train_dir = os.path.abspath('trainReduced')
-    lmdb_size = 1e10
+    test_dir = os.path.abspath('testFull')
+    train_dir = os.path.abspath('trainFull')
 
-    for num_spikes in range(150, 250, 10):
+    for num_spikes in range(150, 260, 10):
         #test directory
         image_dataset = generate_nmnist_dataset(initial_size, test_dir, num_spikes, 0.75)
         output_lmdb = 'testlmdb' + str(num_spikes)
-        save_to_lmdb(image_dataset, output_lmdb, lmdb_size)
+        database = save_to_lmdb(image_dataset, output_lmdb)
+        #database.process_all_data(show_lmdb_datum)
 
         #train directory
         image_dataset = generate_nmnist_dataset(initial_size, train_dir, num_spikes, 0.75)
         output_lmdb = 'trainlmdb' + str(num_spikes)
-        save_to_lmdb(image_dataset, output_lmdb, lmdb_size)
+        save_to_lmdb(image_dataset, output_lmdb)
 
     #TD = ev.read_dataset(os.path.abspath('trainReduced/0/00002.bin'))
 if __name__ == "__main__":
