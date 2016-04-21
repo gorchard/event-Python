@@ -138,7 +138,7 @@ def save_to_lmdb(image_dataset, output_lmdb):
     """
     # shuffle the images before storing in the lmdb
     # np.random.shuffle(image_dataset) # does not work
-    lmdb_size = image_dataset.nbytes * image_dataset.size
+    lmdb_size = 5L * image_dataset.height[0] * image_dataset.width[0] * image_dataset.size
     shuffled_indices = range(image_dataset.size)
     np.random.shuffle(shuffled_indices)
 
