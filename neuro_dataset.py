@@ -240,11 +240,12 @@ def make_td_images(td, num_spikes, step_factor=1):
 
     return images
 
-def make_td_probability_image(td, skip_steps=0):
+def make_td_probability_image(td, skip_steps=0, is_normalize = False):
     """Generate image from the Temporal Difference (td) events with each pixel value indicating probability of a spike within a 1 millisecond time step. 0 = 0%. 255 = 100%
     td is read from a binary file (refer to eventvision.Readxxx functions)
     td: eventvision.Events
     skip_steps: number of time steps to skip (to allow tracker to init to a more correct position)
+    is_normalize: True to make the images more obvious (by scaling max probability to pixel value 255)
     """
     assert isinstance(td, ev.Events)
 
@@ -263,9 +264,10 @@ def make_td_probability_image(td, skip_steps=0):
         combined_image = combined_image + current_frame        
 
     #print 'Making image out of bin file took %s seconds' % my_timer.secs
-    combined_image = (np.rint(combined_image * 255 / np.max(combined_image))).astype(np.uint8)
-
-
+    if (is_normalize):
+        combined_image = (np.rint(combined_image * 255 / np.max(combined_image))).astype(np.uint8)
+    else:
+        combined_image = (np.rint(combined_image * 255 / num_time_steps)).astype(np.uint8)
 
     return combined_image
 
@@ -293,7 +295,7 @@ def prepare_n_mnist(filename, is_filter, num_spikes, step_factor=1):
     #    cv2.waitKey(70)
     return images
 
-def prepare_n_mnist_continuous(filename, is_filter, is_normalize=True):
+def prepare_n_mnist_continuous(filename, is_filter, is_normalize=False):
     """Creates image with pixel values indicating probability of a spike
     filename: path to the recording
     is_filter: True if median filtering should be applied to the constructed image
@@ -307,7 +309,7 @@ def prepare_n_mnist_continuous(filename, is_filter, is_normalize=True):
     td.data = apply_tracking2(td)
     #td.data = apply_tracking3(td)
     td.data = td.extract_roi([3, 3], [28, 28], True)
-    image = make_td_probability_image(td, 9)
+    image = make_td_probability_image(td, 9, is_normalize)
 
     if is_filter:
         image = ndimage.median_filter(image, 3)
@@ -414,7 +416,7 @@ def generate_nmnist_continuous_dataset(initial_size, input_dir):
         current_dir = input_dir + os.path.sep + str(i) + os.path.sep + '*.bin'
         print 'Processing %s...' %current_dir
         for filename in glob.iglob(current_dir):
-            image = prepare_n_mnist_continuous(filename, False, True)
+            image = prepare_n_mnist_continuous(filename, False, False)
             if num_images + 1 >= image_dataset.size:
                 image_dataset = np.resize(image_dataset, (num_images * 2))
             add_images_to_dataset(image_dataset, image, num_images, i, 28, 28)
