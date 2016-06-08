@@ -207,7 +207,7 @@ def annotate_tracks(TD, frame_length):
 
     while(frame_num < n_frames):
         t1_ind = np.min(np.where(TD.data.ts >= frame_ts))
-        t2_ind = np.max(np.where(TD.data.ts < frame_ts + frame_length))
+        t2_ind = np.min(np.where(TD.data.ts > frame_ts + frame_length))
         frame_ts = frame_ts + frame_length
         current_frame = np.zeros((TD.height,TD.width,3), np.uint8)
         current_frame[TD.data.y[t1_ind:t2_ind][TD.data.p[t1_ind:t2_ind] == 1], TD.data.x[t1_ind:t2_ind][TD.data.p[t1_ind:t2_ind] == 1], :] = [100, 100, 255] 
