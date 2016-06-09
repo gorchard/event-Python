@@ -3,3 +3,12 @@
 *.pyc
 *.aedat
 *.val
+/trainFull
+/testReduced
+/testlmdb_continuous
+/testFull
+/event-Python.sln
+/event-Python.pyproj.user
+/event-Python.pyproj
+/.vs/event-Python/v14
+/trainlmdb_continuous
