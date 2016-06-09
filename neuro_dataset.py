@@ -5,6 +5,7 @@ import os
 import cv2
 import numpy as np
 from scipy import ndimage
+from scipy.io import savemat
 import caffe_lmdb
 import datum_pb2
 import eventvision as ev
@@ -251,7 +252,7 @@ def make_td_probability_image(td, skip_steps=0, is_normalize = False):
 
     #with timer.Timer() as my_timer:
     event_offset = 0
-    combined_image = np.zeros((td.height, td.width), np.uint32)
+    combined_image = np.zeros((td.height, td.width), np.float32)
     offset_ts = td.data[0].ts + (skip_steps * 1000)
     num_time_steps = math.floor((td.data[-1].ts - offset_ts) / 1000)
     
@@ -265,9 +266,9 @@ def make_td_probability_image(td, skip_steps=0, is_normalize = False):
 
     #print 'Making image out of bin file took %s seconds' % my_timer.secs
     if (is_normalize):
-        combined_image = (np.rint(combined_image * 255 / np.max(combined_image))).astype(np.uint8)
+        combined_image = (combined_image / np.max(combined_image))
     else:
-        combined_image = (np.rint(combined_image * 255 / num_time_steps)).astype(np.uint8)
+        combined_image = (combined_image / num_time_steps)
 
     return combined_image
 
@@ -304,11 +305,12 @@ def prepare_n_mnist_continuous(filename, is_filter, is_normalize=False):
     """
     td = ev.read_dataset(filename)
     #td.show_td(100)
-    #td.data = stabilize(td)
+    td.data = stabilize(td)
+    td.data = td.extract_roi([0, 0], [28, 28], True)
     #td.data = apply_tracking1(td)
-    td.data = apply_tracking2(td)
+    #td.data = apply_tracking2(td)
     #td.data = apply_tracking3(td)
-    td.data = td.extract_roi([3, 3], [28, 28], True)
+    #td.data = td.extract_roi([3, 3], [28, 28], True)
     image = make_td_probability_image(td, 9, is_normalize)
 
     if is_filter:
@@ -335,7 +337,7 @@ def add_images_to_dataset(image_dataset, images, add_index, label, width, height
         image_dataset[add_index].image_data = images
         image_dataset[add_index].label = label
 
-def save_to_lmdb(image_dataset, output_lmdb):
+def save_to_lmdb(image_dataset, output_lmdb, is_float_data):
     """Save contents of image dataset to an lmdb
     image_dataset: images in a numpy record array
     output_lmdb: path to output lmdb
@@ -345,6 +347,10 @@ def save_to_lmdb(image_dataset, output_lmdb):
     # shuffle the images before storing in the lmdb
     # np.random.shuffle(image_dataset) # does not work
     lmdb_size = 5L * image_dataset.height[0] * image_dataset.width[0] * image_dataset.size
+
+    if is_float_data:
+        lmdb_size = lmdb_size * 4L;
+
     shuffled_indices = range(image_dataset.size)
     np.random.shuffle(shuffled_indices)
 
@@ -352,6 +358,7 @@ def save_to_lmdb(image_dataset, output_lmdb):
     image_database.start_write_transaction()
     count = 0
     key = 0
+
     for i in shuffled_indices:
         count += 1
         key += 1
@@ -360,7 +367,13 @@ def save_to_lmdb(image_dataset, output_lmdb):
         datum.channels = 1 #always one for neuromorphic images
         datum.height = image['height'].item(0)
         datum.width = image['width'].item(0)
-        datum.data = image['image_data'].tobytes()  # or .tostring() if numpy < 1.9
+
+        if is_float_data:
+            datum.data = image['image_data'].tobytes()  # or .tostring() if numpy < 1.9
+        else:
+            float_img = image['image_data'].flatten().tolist()
+            datum.float_data.extend(float_img)
+
         datum.label = image['label'].item(0)
         str_id = '{:08}'.format(key)
 
@@ -373,6 +386,36 @@ def save_to_lmdb(image_dataset, output_lmdb):
 
     image_database.commit_write_transaction()
     return image_database
+
+def save_to_mat(image_dataset, output_mat):
+    """Save contents of image dataset to an matlab format
+    image_dataset: images in a numpy record array
+    output_mat: path to output mat
+
+    returns void
+    """
+    # shuffle the images before storing in the dataset
+    shuffled_indices = range(image_dataset.size)
+    np.random.shuffle(shuffled_indices)
+    num_images = image_dataset.size    
+    num_features = image_dataset.height[0]*image_dataset.width[0]
+    num_labels = 10
+
+    # Numpy Array which will be written into output matrix (Pre-allocate memory)
+    # Assumes image_dataset[i]['image_data'] is of the format = [height, width]
+    images = np.zeros((num_images,num_features), dtype=np.float) # np.uint8 is sufficient if space is an issue
+    labels = np.zeros((num_images,num_labels), dtype=np.float)
+
+    key = 0
+    for i in shuffled_indices:
+        image = image_dataset[i]
+        flat_image = image['image_data'].T
+        images[key,:] = flat_image.flatten()
+        labels[key,:] = np.zeros((1,num_labels))
+        labels[key,image['label'].item(0)] = 1
+        key += 1
+
+    savemat(output_mat, {'labels' : labels, 'data' : images}, appendmat=True,do_compression=True)
 
 def generate_nmnist_dataset(initial_size, input_dir, num_spikes, step_factor):
     """Parse the specified directory containing nmnist files to generate an image dataset
@@ -461,17 +504,19 @@ def main():
     Datasets generated are for continuous spike processing by TrueNorth layers
     """
     initial_size = 6e5 #best to make this big enough avoid expensive re-allocation
-    test_dir = os.path.abspath('testFull')
+    test_dir = os.path.abspath('testReduced')
     train_dir = os.path.abspath('trainFull')
 
     #test directory
     image_dataset = generate_nmnist_continuous_dataset(initial_size, test_dir)
-    database = save_to_lmdb(image_dataset, 'testlmdb_continuous')
+    database = save_to_lmdb(image_dataset, 'testlmdb_continuous', True)
+    save_to_mat(image_dataset, 'MNIST_continuous_test.mat');
     #database.process_all_data(show_lmdb_datum)
 
     #train directory
     image_dataset = generate_nmnist_continuous_dataset(initial_size, train_dir)
-    save_to_lmdb(image_dataset, 'trainlmdb_continuous')
+    save_to_lmdb(image_dataset, 'trainlmdb_continuous', True)
+    save_to_mat(image_dataset, 'MNIST_continuous_train.mat');
 
     #TD = ev.read_dataset(os.path.abspath('trainReduced/0/00002.bin'))
 if __name__ == "__main__":
