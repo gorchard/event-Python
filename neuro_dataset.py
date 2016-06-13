@@ -369,10 +369,10 @@ def save_to_lmdb(image_dataset, output_lmdb, is_float_data):
         datum.width = image['width'].item(0)
 
         if is_float_data:
-            datum.data = image['image_data'].tobytes()  # or .tostring() if numpy < 1.9
-        else:
             float_img = image['image_data'].flatten().tolist()
             datum.float_data.extend(float_img)
+        else:
+            datum.data = image['image_data'].tobytes()  # or .tostring() if numpy < 1.9
 
         datum.label = image['label'].item(0)
         str_id = '{:08}'.format(key)
@@ -504,7 +504,7 @@ def main():
     Datasets generated are for continuous spike processing by TrueNorth layers
     """
     initial_size = 6e5 #best to make this big enough avoid expensive re-allocation
-    test_dir = os.path.abspath('testReduced')
+    test_dir = os.path.abspath('testFull')
     train_dir = os.path.abspath('trainFull')
 
     #test directory
